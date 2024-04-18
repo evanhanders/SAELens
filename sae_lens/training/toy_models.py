@@ -5,6 +5,7 @@ https://github.com/callummcdougall/sae-exercises-mats?fbclid=IwAR3qYAELbyD_x5IAY
 
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
@@ -20,6 +21,7 @@ from matplotlib.widgets import Slider  # , Button
 from torch import Tensor, nn
 from torch.nn import functional as F
 from tqdm import tqdm
+from transformer_lens.hook_points import HookedRootModule, HookPoint
 
 device = "cpu"
 
@@ -48,17 +50,13 @@ class Config:
     n_anticorrelated_pairs: int = 0
 
 
-class Model(nn.Module):
-    W: Float[Tensor, "n_instances n_hidden n_features"]
-    b_final: Float[Tensor, "n_instances n_features"]
-    # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
+class HookedToyModel(HookedRootModule, ABC):
 
     def __init__(
         self,
         cfg: Config,
         feature_probability: Optional[Union[float, Tensor]] = None,
         importance: Optional[Union[float, Tensor]] = None,
-        device: str | torch.device = device,
     ):
         super().__init__()
         self.cfg = cfg
@@ -82,42 +80,13 @@ class Model(nn.Module):
             (cfg.n_instances, cfg.n_features)
         )
 
-        self.W = nn.Parameter(
-            nn.init.xavier_normal_(
-                t.empty((cfg.n_instances, cfg.n_hidden, cfg.n_features))
-            )
-        )
-        self.b_final = nn.Parameter(t.zeros((cfg.n_instances, cfg.n_features)))
-        self.to(device)
+    @abstractmethod
+    def forward(self, features: Tensor) -> Tensor:
+        """Forward pass, to be implemented by subclasses"""
 
-    def forward(
-        self, features: Float[Tensor, "... instances features"]
-    ) -> Float[Tensor, "... instances features"]:
-        hidden = einops.einsum(
-            features,
-            self.W,
-            "... instances features, instances hidden features -> ... instances hidden",
-        )
-        out = einops.einsum(
-            hidden,
-            self.W,
-            "... instances hidden, instances hidden features -> ... instances features",
-        )
-        return F.relu(out + self.b_final)
-
-    # def generate_batch(self, batch_size) -> Float[Tensor, "batch_size instances features"]:
-    #     '''
-    #     Generates a batch of data. We'll return to this function later when we apply correlations.
-    #     '''
-    #     feat = t.rand((batch_size, self.cfg.n_instances, self.cfg.n_features), device=self.W.device)
-    #     feat_seeds = t.rand((batch_size, self.cfg.n_instances, self.cfg.n_features), device=self.W.device)
-    #     feat_is_present = feat_seeds <= self.feature_probability
-    #     batch = t.where(
-    #         feat_is_present,
-    #         feat,
-    #         t.zeros((), device=self.W.device),
-    #     )
-    #     return batch
+    @abstractmethod
+    def calculate_loss(self, out: Tensor, batch: Tensor) -> Tensor:
+        """Loss calculation, to be implemented by subclasses"""
 
     def generate_correlated_features(
         self, batch_size: int, n_correlated_pairs: int
@@ -222,24 +191,6 @@ class Model(nn.Module):
         batch = t.cat(data, dim=-1)
         return batch
 
-    def calculate_loss(
-        self,
-        out: Float[Tensor, "batch instances features"],
-        batch: Float[Tensor, "batch instances features"],
-    ) -> Float[Tensor, ""]:
-        """
-        Calculates the loss for a given batch, using this loss described in the Toy Models paper:
-
-            https://transformer-circuits.pub/2022/toy_model/index.html#demonstrating-setup-loss
-
-        Note, `model.importance` is guaranteed to broadcast with the shape of `out` and `batch`.
-        """
-        error = self.importance * ((batch - out) ** 2)
-        loss = einops.reduce(
-            error, "batch instances features -> instances", "mean"
-        ).sum()
-        return loss
-
     def optimize(
         self,
         batch_size: int = 1024,
@@ -274,6 +225,78 @@ class Model(nn.Module):
                 progress_bar.set_postfix(
                     loss=loss.item() / self.cfg.n_instances, lr=step_lr
                 )
+
+
+class ReluOutputModel(HookedToyModel):
+    """
+    Anthropic's ReLU Output Model as described in the Toy Models paper:
+            https://transformer-circuits.pub/2022/toy_model/index.html#demonstrating-setup-model
+    """
+
+    W: Float[Tensor, "n_instances n_hidden n_features"]
+    b_final: Float[Tensor, "n_instances n_features"]
+    # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
+
+    def __init__(
+        self,
+        cfg: Config,
+        device: str | torch.device = device,
+        feature_probability: Optional[Union[float, Tensor]] = None,
+        importance: Optional[Union[float, Tensor]] = None,
+    ):
+        super().__init__(
+            cfg, feature_probability=feature_probability, importance=importance
+        )
+
+        self.W = nn.Parameter(
+            nn.init.xavier_normal_(
+                t.empty((cfg.n_instances, cfg.n_hidden, cfg.n_features))
+            )
+        )
+        self.b_final = nn.Parameter(t.zeros((cfg.n_instances, cfg.n_features)))
+        self.to(device)
+
+        # Add and setup hookpoints.
+        self.hook_hidden = HookPoint()
+        self.hook_out_prebias = HookPoint()
+        self.setup()
+
+    def forward(
+        self, features: Float[Tensor, "... instances features"]
+    ) -> Float[Tensor, "... instances features"]:
+        hidden = self.hook_hidden(
+            einops.einsum(
+                features,
+                self.W,
+                "... instances features, instances hidden features -> ... instances hidden",
+            )
+        )
+        out = self.hook_out_prebias(
+            einops.einsum(
+                hidden,
+                self.W,
+                "... instances hidden, instances hidden features -> ... instances features",
+            )
+        )
+        return F.relu(out + self.b_final)
+
+    def calculate_loss(
+        self,
+        out: Float[Tensor, "batch instances features"],
+        batch: Float[Tensor, "batch instances features"],
+    ) -> Float[Tensor, ""]:
+        """
+        Calculates the loss for a given batch, using this loss described in the Toy Models paper:
+
+            https://transformer-circuits.pub/2022/toy_model/index.html#demonstrating-setup-loss
+
+        Note, `model.importance` is guaranteed to broadcast with the shape of `out` and `batch`.
+        """
+        error = self.importance * ((batch - out) ** 2)
+        loss = einops.reduce(
+            error, "batch instances features -> instances", "mean"
+        ).sum()
+        return loss
 
 
 Arr = np.ndarray
