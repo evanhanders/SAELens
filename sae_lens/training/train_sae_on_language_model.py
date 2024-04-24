@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
 from transformer_lens.hook_points import HookedRootModule
 
-from sae_lens.training.activations_store import ActivationsStore
+from sae_lens.training.activations_store import LMActivationsStore
 from sae_lens.training.evals import run_evals
 from sae_lens.training.geometric_median import compute_geometric_median
 from sae_lens.training.optim import get_scheduler
@@ -78,7 +78,7 @@ class TrainSAEGroupOutput:
 def train_sae_on_language_model(
     model: HookedRootModule,
     sae_group: SparseAutoencoderDictionary,
-    activation_store: ActivationsStore,
+    activation_store: LMActivationsStore,
     batch_size: int = 1024,
     n_checkpoints: int = 0,
     feature_sampling_window: int = 1000,  # how many training steps between resampling the features / considiring neurons dead
@@ -104,7 +104,7 @@ def train_sae_on_language_model(
 def train_sae_group_on_language_model(
     model: HookedRootModule,
     sae_group: SparseAutoencoderDictionary,
-    activation_store: ActivationsStore,
+    activation_store: LMActivationsStore,
     batch_size: int = 1024,
     n_checkpoints: int = 0,
     feature_sampling_window: int = 1000,  # how many training steps between resampling the features / considiring neurons dead
@@ -321,7 +321,7 @@ def _build_train_context(
 
 def _init_sae_group_b_decs(
     sae_group: SparseAutoencoderDictionary,
-    activation_store: ActivationsStore,
+    activation_store: LMActivationsStore,
     all_layers: list[int],
 ) -> None:
     """

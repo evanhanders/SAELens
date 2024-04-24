@@ -6,7 +6,7 @@ import torch
 from huggingface_hub import hf_hub_download
 from transformer_lens import HookedTransformer
 
-from sae_lens.training.activations_store import ActivationsStore
+from sae_lens.training.activations_store import LMActivationsStore
 from sae_lens.training.config import LanguageModelSAERunnerConfig
 from sae_lens.training.sae_group import SparseAutoencoderDictionary
 
@@ -47,7 +47,7 @@ def test_LMSparseAutoencoderSessionloader_load_session(
 
     assert isinstance(model, HookedTransformer)
     assert isinstance(next(iter(sae_group))[1], SparseAutoencoder)
-    assert isinstance(activations_loader, ActivationsStore)
+    assert isinstance(activations_loader, LMActivationsStore)
 
 
 def test_LMSparseAutoencoderSessionloader_load_sae_session_from_pretrained(
@@ -102,6 +102,6 @@ def test_load_pretrained_sae_from_huggingface():
     )
     assert isinstance(model, HookedTransformer)
     assert isinstance(sae, SparseAutoencoderDictionary)
-    assert isinstance(activation_store, ActivationsStore)
+    assert isinstance(activation_store, LMActivationsStore)
     assert sae.cfg.hook_point_layer == layer
     assert sae.cfg.model_name == "gpt2-small"

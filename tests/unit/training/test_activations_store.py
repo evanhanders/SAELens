@@ -6,7 +6,7 @@ import torch
 from datasets import Dataset, IterableDataset
 from transformer_lens import HookedTransformer
 
-from sae_lens.training.activations_store import ActivationsStore
+from sae_lens.training.activations_store import LMActivationsStore
 from sae_lens.training.config import LanguageModelSAERunnerConfig
 from tests.unit.helpers import build_sae_cfg, load_model_cached
 
@@ -92,7 +92,7 @@ def test_activations_store__shapes_look_correct_with_real_models_and_datasets(
 ):
     # --- first, test initialisation ---
 
-    store = ActivationsStore.from_config(model, cfg)
+    store = LMActivationsStore.from_config(model, cfg)
 
     assert store.model == model
 
@@ -150,7 +150,7 @@ def test_activations_store__get_activations_head_hook(ts_model: HookedTransforme
         hook_point_layer=1,
         d_in=4,
     )
-    activation_store_head_hook = ActivationsStore.from_config(ts_model, cfg)
+    activation_store_head_hook = LMActivationsStore.from_config(ts_model, cfg)
     batch = activation_store_head_hook.get_batch_tokens()
     activations = activation_store_head_hook.get_activations(batch)
 
@@ -181,7 +181,7 @@ def test_activations_store__get_batch_tokens__fills_the_context_separated_by_bos
         context_size=context_size,
     )
 
-    activation_store = ActivationsStore.from_config(ts_model, cfg, dataset=dataset)
+    activation_store = LMActivationsStore.from_config(ts_model, cfg, dataset=dataset)
     encoded_text = tokenize_with_bos(ts_model, "hello world")
     tokens = activation_store.get_batch_tokens()
     assert tokens.shape == (2, context_size)  # batch_size x context_size
@@ -207,7 +207,7 @@ def test_activations_store__get_next_dataset_tokens__tokenizes_each_example_in_o
             {"text": "hello world3"},
         ]
     )
-    activation_store = ActivationsStore.from_config(ts_model, cfg, dataset=dataset)
+    activation_store = LMActivationsStore.from_config(ts_model, cfg, dataset=dataset)
 
     assert activation_store._get_next_dataset_tokens().tolist() == tokenize_with_bos(
         ts_model, "hello world1"

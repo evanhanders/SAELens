@@ -241,10 +241,7 @@ class ReluOutputModel(HookedToyModel):
     b_final: Float[Tensor, "n_instances n_features"]
     # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
 
-    def __init__(
-        self,
-        cfg: Config
-    ):
+    def __init__(self, cfg: Config):
         super().__init__(cfg)
 
         self.W = nn.Parameter(
@@ -296,7 +293,8 @@ class ReluOutputModel(HookedToyModel):
             error, "batch instances features -> instances", "mean"
         ).sum()
         return loss
-    
+
+
 class ReluOutputModelCE(ReluOutputModel):
     """
     A variant of Anthropic's ReLU Output Model.
@@ -310,28 +308,26 @@ class ReluOutputModelCE(ReluOutputModel):
     b_final: Float[Tensor, "n_instances n_features"]
     # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
 
-    def __init__(
-        self,
-        cfg: Config,
-        extra_feature_value: float = 1e-6
-    ):
+    def __init__(self, cfg: Config, extra_feature_value: float = 1e-6):
         super().__init__(cfg)
         self.extra_feature_value = extra_feature_value
 
         self.W = nn.Parameter(
             nn.init.xavier_normal_(
-                t.empty((cfg.n_instances, cfg.n_hidden, cfg.n_features+1))
+                t.empty((cfg.n_instances, cfg.n_hidden, cfg.n_features + 1))
             )
         )
-        self.b_final = nn.Parameter(t.zeros((cfg.n_instances, cfg.n_features+1)))
+        self.b_final = nn.Parameter(t.zeros((cfg.n_instances, cfg.n_features + 1)))
         self.to(device)
-    
+
     def generate_batch(
         self, batch_size: int
     ) -> Float[Tensor, "batch_size instances features"]:
-        """ Adds an extra feature to the batch, which is set to a constant nonzero value."""
+        """Adds an extra feature to the batch, which is set to a constant nonzero value."""
         batch = super().generate_batch(batch_size)
-        extra_feature = self.extra_feature_value*t.ones((batch_size, self.cfg.n_instances, 1)).to(batch.device)
+        extra_feature = self.extra_feature_value * t.ones(
+            (batch_size, self.cfg.n_instances, 1)
+        ).to(batch.device)
         return t.cat((batch, extra_feature), dim=-1)
 
     def calculate_loss(
@@ -340,7 +336,7 @@ class ReluOutputModelCE(ReluOutputModel):
         batch: Float[Tensor, "batch instances features"],
     ) -> Float[Tensor, ""]:
         """
-        Calculates the loss for a given batch. 
+        Calculates the loss for a given batch.
         Loss is calculated using Cross Entropy loss, where the true probability distribution
         is a one-hot encoding of the feature with the largest magnitude activation in the input.
         Model outputs (raw logits) are weighted by importance before being passed through CE loss.
@@ -348,7 +344,9 @@ class ReluOutputModelCE(ReluOutputModel):
         Note, `model.importance` is guaranteed to broadcast with the shape of `out` and `batch`.
         """
         max_feat_indices = t.argmax(batch, dim=-1)
-        loss = F.cross_entropy((self.importance*out).squeeze(), max_feat_indices.squeeze())
+        loss = F.cross_entropy(
+            (self.importance * out).squeeze(), max_feat_indices.squeeze()
+        )
         return loss
 
 

@@ -10,7 +10,7 @@ from datasets import Dataset
 from torch import Tensor
 from transformer_lens import HookedTransformer
 
-from sae_lens.training.activations_store import ActivationsStore
+from sae_lens.training.activations_store import LMActivationsStore
 from sae_lens.training.optim import get_scheduler
 from sae_lens.training.sae_group import SparseAutoencoderDictionary
 from sae_lens.training.sparse_autoencoder import ForwardOutput, SparseAutoencoder
@@ -316,7 +316,7 @@ def test_train_sae_group_on_language_model__runs(
     )
     # just a tiny datast which will run quickly
     dataset = Dataset.from_list([{"text": "hello world"}] * 2000)
-    activation_store = ActivationsStore.from_config(ts_model, cfg, dataset=dataset)
+    activation_store = LMActivationsStore.from_config(ts_model, cfg, dataset=dataset)
     sae_group = SparseAutoencoderDictionary(cfg)
     res = train_sae_group_on_language_model(
         model=ts_model,

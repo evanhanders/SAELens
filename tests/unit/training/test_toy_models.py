@@ -19,11 +19,11 @@ def test_toy_sparsity_limits():
 @pytest.mark.parametrize("n_correlated_pairs", [1, 2, 3])
 def test_toy_correlated_features(n_correlated_pairs: int):
     cfg = Config(
-        n_instances=1, 
-        n_features=6, 
-        n_hidden=2, 
+        n_instances=1,
+        n_features=6,
+        n_hidden=2,
         n_correlated_pairs=n_correlated_pairs,
-        feature_probability=0.5
+        feature_probability=0.5,
     )
     model = ReluOutputModel(cfg)
 
@@ -77,6 +77,7 @@ def test_toy_anti_and_corr_features(
             batch[:, 0, n_correlated_pairs * 2 + i * 2 + 1] > 0,
         ).all()
 
+
 def test_reluoutput_forward():
     cfg = Config(n_instances=1, n_features=6, n_hidden=2, feature_probability=0.5)
     model = ReluOutputModel(cfg)
@@ -97,8 +98,9 @@ def test_reluoutput_forward():
     assert torch.allclose(cache["hook_out_prebias"], expected)
     assert torch.allclose(cache["hook_hidden"], expected_hidden)
 
+
 def test_reluoutputce_batch_shape():
     cfg = Config(n_instances=1, n_features=5, n_hidden=2, feature_probability=0.5)
     model = ReluOutputModelCE(cfg)
     batch = model.generate_batch(100)
-    assert batch.shape == (100, cfg.n_instances, cfg.n_features+1)
+    assert batch.shape == (100, cfg.n_instances, cfg.n_features + 1)
