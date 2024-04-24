@@ -387,7 +387,6 @@ class ToyActivationsStore(ActivationsStore):
         batch_size = self.store_batch_size
         d_in = self.d_in
         buffer_size = batch_size * n_batches_in_buffer
-        total_size = buffer_size * d_in
         num_layers = len(self.hook_point_layers)  # Number of hook points or layers
 
         if self.cached_activations_path is not None:
@@ -396,7 +395,7 @@ class ToyActivationsStore(ActivationsStore):
         refill_iterator = range(0, buffer_size, batch_size)
         # Initialize empty tensor buffer of the maximum required size with an additional dimension for layers
         new_buffer = torch.zeros(
-            (total_size, num_layers, d_in),
+            (buffer_size, num_layers, d_in),
             dtype=self.dtype,  # type: ignore
             device=self.device,
         )
