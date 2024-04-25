@@ -13,28 +13,68 @@ DTYPE_MAP = {
 
 
 @dataclass
-class LanguageModelSAERunnerConfig:
+class CacheActivationsRunnerConfig:
     """
-    Configuration for training a sparse autoencoder on a language model.
+    Configuration for caching activations of an LLM.
     """
 
     # Data Generating Function (Model + Training Distibuion)
     model_name: str = "gelu-2l"
     model_class_name: str = "HookedTransformer"
     hook_point: str = "blocks.{layer}.hook_mlp_out"
-    hook_point_eval: str = "blocks.{layer}.attn.pattern"
     hook_point_layer: int | list[int] = 0
     hook_point_head_index: Optional[int] = None
     dataset_path: str = "NeelNanda/c4-tokenized-2b"
     is_dataset_tokenized: bool = True
     context_size: int = 128
-    use_cached_activations: bool = False
-    cached_activations_path: Optional[str] = (
-        None  # Defaults to "activations/{dataset}/{model}/{full_hook_name}_{hook_point_head_index}"
-    )
+    cached_activations_path: Optional[
+        str
+    ] = None  # Defaults to "activations/{dataset}/{model}/{full_hook_name}_{hook_point_head_index}"
 
     # SAE Parameters
     d_in: int = 512
+
+    # Activation Store Parameters
+    n_batches_in_buffer: int = 20
+    training_tokens: int = 2_000_000
+    store_batch_size: int = 32
+    train_batch_size: int = 4096
+
+    # Misc
+    device: str | torch.device = "cpu"
+    seed: int = 42
+    dtype: str | torch.dtype = "float32"  # type: ignore
+    prepend_bos: bool = True
+
+    # Activation caching stuff
+    shuffle_every_n_buffers: int = 10
+    n_shuffles_with_last_section: int = 10
+    n_shuffles_in_entire_dir: int = 10
+    n_shuffles_final: int = 100
+    model_kwargs: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        # Autofill cached_activations_path unless the user overrode it
+        if self.cached_activations_path is None:
+            self.cached_activations_path = _default_cached_activations_path(
+                self.dataset_path,
+                self.model_name,
+                self.hook_point,
+                self.hook_point_head_index,
+            )
+
+
+@dataclass
+class LanguageModelSAERunnerConfig(CacheActivationsRunnerConfig):
+    """
+    Configuration for training a sparse autoencoder on a language model.
+    """
+
+    # Data Generating Function (Model + Training Distibuion)
+    hook_point_eval: str = "blocks.{layer}.attn.pattern"
+    use_cached_activations: bool = False
+
+    # SAE Parameters
     d_sae: Optional[int] = None
     b_dec_init_method: str = "geometric_median"
     expansion_factor: int | list[int] = 4
@@ -46,17 +86,7 @@ class LanguageModelSAERunnerConfig:
     decoder_orthogonal_init: bool = False
 
     # Activation Store Parameters
-    n_batches_in_buffer: int = 20
-    training_tokens: int = 2_000_000
     finetuning_tokens: int = 0
-    store_batch_size: int = 32
-    train_batch_size: int = 4096
-
-    # Misc
-    device: str | torch.device = "cpu"
-    seed: int = 42
-    dtype: str | torch.dtype = "float32"  # type: ignore #
-    prepend_bos: bool = True
 
     # Training Parameters
 
@@ -74,13 +104,13 @@ class LanguageModelSAERunnerConfig:
 
     ## Learning Rate Schedule
     lr: float | list[float] = 3e-4
-    lr_scheduler_name: str | list[str] = (
-        "constant"  # constant, cosineannealing, cosineannealingwarmrestarts
-    )
+    lr_scheduler_name: str | list[
+        str
+    ] = "constant"  # constant, cosineannealing, cosineannealingwarmrestarts
     lr_warm_up_steps: int | list[int] = 500
-    lr_end: float | list[float] | None = (
-        None  # only used for cosine annealing, default is lr / 10
-    )
+    lr_end: float | list[
+        float
+    ] | None = None  # only used for cosine annealing, default is lr / 10
     lr_decay_steps: int | list[int] = 0
     n_restart_cycles: int | list[int] = 1  # used only for cosineannealingwarmrestarts
 
@@ -88,9 +118,9 @@ class LanguageModelSAERunnerConfig:
     finetuning_method: Optional[str] = None  # scale, decoder or unrotated_decoder
 
     # Resampling protocol args
-    use_ghost_grads: bool | list[bool] = (
-        False  # want to change this to true on some timeline.
-    )
+    use_ghost_grads: bool | list[
+        bool
+    ] = False  # want to change this to true on some timeline.
     feature_sampling_window: int = 2000
     dead_feature_window: int = 1000  # unless this window is larger feature sampling,
 
@@ -110,13 +140,8 @@ class LanguageModelSAERunnerConfig:
     model_kwargs: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.use_cached_activations and self.cached_activations_path is None:
-            self.cached_activations_path = _default_cached_activations_path(
-                self.dataset_path,
-                self.model_name,
-                self.hook_point,
-                self.hook_point_head_index,
-            )
+        if self.use_cached_activations:
+            super().__post_init__()
 
         if not isinstance(self.expansion_factor, list):
             self.d_sae = self.d_in * self.expansion_factor
@@ -141,7 +166,7 @@ class LanguageModelSAERunnerConfig:
                 f"dtype must be one of {list(DTYPE_MAP.keys())}. Got {self.dtype}"
             )
         elif isinstance(self.dtype, str):
-            self.dtype: torch.dtype = DTYPE_MAP[self.dtype]
+            self.dtype: torch.dtype = DTYPE_MAP[self.dtype]  # type: ignore
 
         # if we use decoder fine tuning, we can't be applying b_dec to the input
         if (self.finetuning_method == "decoder") and (self.apply_b_dec_to_input):
@@ -205,58 +230,6 @@ class LanguageModelSAERunnerConfig:
 
         if not isinstance(self.use_ghost_grads, list) and self.use_ghost_grads:
             print("Using Ghost Grads.")
-
-
-@dataclass
-class CacheActivationsRunnerConfig:
-    """
-    Configuration for caching activations of an LLM.
-    """
-
-    # Data Generating Function (Model + Training Distibuion)
-    model_name: str = "gelu-2l"
-    model_class_name: str = "HookedTransformer"
-    hook_point: str = "blocks.{layer}.hook_mlp_out"
-    hook_point_layer: int | list[int] = 0
-    hook_point_head_index: Optional[int] = None
-    dataset_path: str = "NeelNanda/c4-tokenized-2b"
-    is_dataset_tokenized: bool = True
-    context_size: int = 128
-    cached_activations_path: Optional[str] = (
-        None  # Defaults to "activations/{dataset}/{model}/{full_hook_name}_{hook_point_head_index}"
-    )
-
-    # SAE Parameters
-    d_in: int = 512
-
-    # Activation Store Parameters
-    n_batches_in_buffer: int = 20
-    training_tokens: int = 2_000_000
-    store_batch_size: int = 32
-    train_batch_size: int = 4096
-
-    # Misc
-    device: str | torch.device = "cpu"
-    seed: int = 42
-    dtype: str | torch.dtype = "float32"
-    prepend_bos: bool = True
-
-    # Activation caching stuff
-    shuffle_every_n_buffers: int = 10
-    n_shuffles_with_last_section: int = 10
-    n_shuffles_in_entire_dir: int = 10
-    n_shuffles_final: int = 100
-    model_kwargs: dict[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self):
-        # Autofill cached_activations_path unless the user overrode it
-        if self.cached_activations_path is None:
-            self.cached_activations_path = _default_cached_activations_path(
-                self.dataset_path,
-                self.model_name,
-                self.hook_point,
-                self.hook_point_head_index,
-            )
 
 
 def _default_cached_activations_path(

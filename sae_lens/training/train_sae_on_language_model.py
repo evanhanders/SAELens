@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from tqdm import tqdm
 from transformer_lens.hook_points import HookedRootModule
 
-from sae_lens.training.activations_store import LMActivationsStore
+from sae_lens.training.activations_store import ActivationsStore
 from sae_lens.training.evals import run_evals
 from sae_lens.training.geometric_median import compute_geometric_median
 from sae_lens.training.optim import get_scheduler
@@ -53,7 +53,6 @@ class SAETrainContext:
         return _log_feature_sparsity(self.feature_sparsity)
 
     def begin_finetuning(self, sae: SparseAutoencoder):
-
         # finetuning method should be set in the config
         # if not, then we don't finetune
         if not isinstance(sae.cfg.finetuning_method, str):
@@ -78,7 +77,7 @@ class TrainSAEGroupOutput:
 def train_sae_on_language_model(
     model: HookedRootModule,
     sae_group: SparseAutoencoderDictionary,
-    activation_store: LMActivationsStore,
+    activation_store: ActivationsStore,
     batch_size: int = 1024,
     n_checkpoints: int = 0,
     feature_sampling_window: int = 1000,  # how many training steps between resampling the features / considiring neurons dead
@@ -104,7 +103,7 @@ def train_sae_on_language_model(
 def train_sae_group_on_language_model(
     model: HookedRootModule,
     sae_group: SparseAutoencoderDictionary,
-    activation_store: LMActivationsStore,
+    activation_store: ActivationsStore,
     batch_size: int = 1024,
     n_checkpoints: int = 0,
     feature_sampling_window: int = 1000,  # how many training steps between resampling the features / considiring neurons dead
@@ -321,7 +320,7 @@ def _build_train_context(
 
 def _init_sae_group_b_decs(
     sae_group: SparseAutoencoderDictionary,
-    activation_store: LMActivationsStore,
+    activation_store: ActivationsStore,
     all_layers: list[int],
 ) -> None:
     """
@@ -499,11 +498,9 @@ def _save_checkpoint(
     checkpoint_name: int | str,
     wandb_aliases: list[str] | None = None,
 ) -> str:
-
     checkpoint_path = f"{sae_group.cfg.checkpoint_path}/{checkpoint_name}"
     os.makedirs(checkpoint_path, exist_ok=True)
     for name, sae in sae_group.autoencoders.items():
-
         ctx = train_contexts[name]
         path = f"{checkpoint_path}/{name}"
         if sae.normalize_sae_decoder:

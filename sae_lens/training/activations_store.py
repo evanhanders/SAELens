@@ -40,8 +40,7 @@ class ActivationsStore(ABC):
     def from_config(
         cls,
         model: HookedRootModule,
-        cfg: LanguageModelSAERunnerConfig | CacheActivationsRunnerConfig,
-        dataset: HfDataset | None = None,
+        cfg: CacheActivationsRunnerConfig,
     ) -> "ActivationsStore":
         cached_activations_path = cfg.cached_activations_path
         # set cached_activations_path to None if we're not using cached activations
@@ -52,7 +51,6 @@ class ActivationsStore(ABC):
             cached_activations_path = None
         return cls(
             model=model,
-            dataset=dataset or cfg.dataset_path,
             hook_point=cfg.hook_point,
             hook_point_layers=listify(cfg.hook_point_layer),
             hook_point_head_index=cfg.hook_point_head_index,
@@ -72,7 +70,6 @@ class ActivationsStore(ABC):
     def __init__(
         self,
         model: HookedRootModule,
-        dataset: HfDataset | str,
         hook_point: str,
         hook_point_layers: list[int],
         hook_point_head_index: int | None,
@@ -92,11 +89,7 @@ class ActivationsStore(ABC):
         if model_kwargs is None:
             model_kwargs = {}
         self.model_kwargs = model_kwargs
-        self.dataset = (
-            load_dataset(dataset, split="train", streaming=True)
-            if isinstance(dataset, str)
-            else dataset
-        )
+
         self.hook_point = hook_point
         self.hook_point_layers = hook_point_layers
         self.hook_point_head_index = hook_point_head_index
@@ -110,27 +103,6 @@ class ActivationsStore(ABC):
         self.device = device
         self.dtype = dtype
         self.cached_activations_path = cached_activations_path
-
-        self.iterable_dataset = iter(self.dataset)
-
-        # Check if dataset is tokenized
-        dataset_sample = next(self.iterable_dataset)
-
-        # check if it's tokenized
-        if "tokens" in dataset_sample.keys():
-            self.is_dataset_tokenized = True
-            self.tokens_column = "tokens"
-        elif "input_ids" in dataset_sample.keys():
-            self.is_dataset_tokenized = True
-            self.tokens_column = "input_ids"
-        elif "text" in dataset_sample.keys():
-            self.is_dataset_tokenized = False
-            self.tokens_column = "text"
-        else:
-            raise ValueError(
-                "Dataset must have a 'tokens', 'input_ids', or 'text' column."
-            )
-        self.iterable_dataset = iter(self.dataset)  # Reset iterator after checking
 
         if cached_activations_path is not None:  # EDIT: load from multi-layer acts
             assert self.cached_activations_path is not None  # keep pyright happy
@@ -323,52 +295,6 @@ class ToyActivationsStore(ActivationsStore):
     while training SAEs.
     """
 
-    model: HookedRootModule
-    cached_activations_path: str | None
-    tokens_column: Literal["tokens", "input_ids", "text"]
-    hook_point_head_index: int | None
-    _dataloader: Iterator[Any] | None = None
-    _storage_buffer: torch.Tensor | None = None
-
-    def __init__(
-        self,
-        model: HookedRootModule,
-        dataset: HfDataset | str,
-        hook_point: str,
-        hook_point_layers: list[int],
-        hook_point_head_index: int | None,
-        context_size: int,
-        d_in: int,
-        n_batches_in_buffer: int,
-        total_training_tokens: int,
-        store_batch_size: int,
-        train_batch_size: int,
-        prepend_bos: bool,
-        device: str | torch.device,
-        dtype: str | torch.dtype,
-        cached_activations_path: str | None = None,
-        model_kwargs: dict[str, Any] | None = None,
-    ):
-        super().__init__(
-            model=model,
-            dataset=dataset,
-            hook_point=hook_point,
-            hook_point_layers=hook_point_layers,
-            hook_point_head_index=hook_point_head_index,
-            context_size=context_size,
-            d_in=d_in,
-            n_batches_in_buffer=n_batches_in_buffer,
-            total_training_tokens=total_training_tokens,
-            store_batch_size=store_batch_size,
-            train_batch_size=train_batch_size,
-            prepend_bos=prepend_bos,
-            device=device,
-            dtype=dtype,
-            cached_activations_path=cached_activations_path,
-            model_kwargs=model_kwargs,
-        )
-        self.d_in = self.model.cfg.n_hidden
-
     def get_batch_tokens(self) -> torch.Tensor:
         """
         Streams a batch of tokens from a dataset.
@@ -428,13 +354,103 @@ class LMActivationsStore(ActivationsStore):
     while training SAEs.
     """
 
-    model: HookedRootModule
     dataset: HfDataset
-    cached_activations_path: str | None
-    tokens_column: Literal["tokens", "input_ids", "text"]
-    hook_point_head_index: int | None
-    _dataloader: Iterator[Any] | None = None
-    _storage_buffer: torch.Tensor | None = None
+
+    @classmethod
+    def from_config(
+        cls,
+        model: HookedRootModule,
+        cfg: LanguageModelSAERunnerConfig | CacheActivationsRunnerConfig,
+        dataset: HfDataset | None = None,
+    ) -> "ActivationsStore":
+        cached_activations_path = cfg.cached_activations_path
+        # set cached_activations_path to None if we're not using cached activations
+        if (
+            isinstance(cfg, LanguageModelSAERunnerConfig)
+            and not cfg.use_cached_activations
+        ):
+            cached_activations_path = None
+        return cls(
+            model=model,
+            dataset=dataset or cfg.dataset_path,
+            hook_point=cfg.hook_point,
+            hook_point_layers=listify(cfg.hook_point_layer),
+            hook_point_head_index=cfg.hook_point_head_index,
+            context_size=cfg.context_size,
+            d_in=cfg.d_in,
+            n_batches_in_buffer=cfg.n_batches_in_buffer,
+            total_training_tokens=cfg.training_tokens,
+            store_batch_size=cfg.store_batch_size,
+            train_batch_size=cfg.train_batch_size,
+            prepend_bos=cfg.prepend_bos,
+            device=cfg.device,
+            dtype=cfg.dtype,
+            cached_activations_path=cached_activations_path,
+            model_kwargs=cfg.model_kwargs,
+        )
+
+    def __init__(
+        self,
+        model: HookedRootModule,
+        dataset: HfDataset | str,
+        hook_point: str,
+        hook_point_layers: list[int],
+        hook_point_head_index: int | None,
+        context_size: int,
+        d_in: int,
+        n_batches_in_buffer: int,
+        total_training_tokens: int,
+        store_batch_size: int,
+        train_batch_size: int,
+        prepend_bos: bool,
+        device: str | torch.device,
+        dtype: str | torch.dtype,
+        cached_activations_path: str | None = None,
+        model_kwargs: dict[str, Any] | None = None,
+    ):
+        super().__init__(
+            model=model,
+            hook_point=hook_point,
+            hook_point_layers=hook_point_layers,
+            hook_point_head_index=hook_point_head_index,
+            context_size=context_size,
+            d_in=d_in,
+            n_batches_in_buffer=n_batches_in_buffer,
+            total_training_tokens=total_training_tokens,
+            store_batch_size=store_batch_size,
+            train_batch_size=train_batch_size,
+            prepend_bos=prepend_bos,
+            device=device,
+            dtype=dtype,
+            cached_activations_path=cached_activations_path,
+            model_kwargs=model_kwargs,
+        )
+
+        self.dataset = (
+            load_dataset(dataset, split="train", streaming=True)
+            if isinstance(dataset, str)
+            else dataset
+        )
+        self.iterable_dataset = iter(self.dataset)
+
+        # Check if dataset is tokenized
+        dataset_sample = next(self.iterable_dataset)
+
+        # check if it's tokenized
+        if "tokens" in dataset_sample.keys():
+            self.is_dataset_tokenized = True
+            self.tokens_column = "tokens"
+        elif "input_ids" in dataset_sample.keys():
+            self.is_dataset_tokenized = True
+            self.tokens_column = "input_ids"
+        elif "text" in dataset_sample.keys():
+            self.is_dataset_tokenized = False
+            self.tokens_column = "text"
+        else:
+            raise ValueError(
+                "Dataset must have a 'tokens', 'input_ids', or 'text' column."
+            )
+        self.iterable_dataset = iter(self.dataset)  # Reset iterator after checking
 
     def get_batch_tokens(self) -> torch.Tensor:
         """
