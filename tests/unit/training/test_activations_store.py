@@ -8,7 +8,7 @@ from transformer_lens import HookedTransformer
 
 from sae_lens.training.activations_store import LMActivationsStore, ToyActivationsStore
 from sae_lens.training.config import LanguageModelSAERunnerConfig
-from sae_lens.training.toy_models import Config, ReluOutputModel
+from sae_lens.training.toy_models import ReluOutputModel, ToyConfig
 from tests.unit.helpers import build_sae_cfg, load_model_cached
 
 
@@ -109,13 +109,13 @@ def model(cfg: LanguageModelSAERunnerConfig):
         "toy-2x5x2",
     ],
 )
-def toy_cfg(request: pytest.FixtureRequest) -> Config:
+def toy_cfg(request: pytest.FixtureRequest) -> ToyConfig:
     params = request.param
-    return Config(**params)
+    return ToyConfig(**params)
 
 
 @pytest.fixture
-def toy_model(toy_cfg: Config):
+def toy_model(toy_cfg: ToyConfig):
     return ReluOutputModel(toy_cfg)
 
 
@@ -130,7 +130,7 @@ def toy_sae_config():
 
 
 def test_toy_activations_store__shapes_look_correct(
-    toy_cfg: Config,
+    toy_cfg: ToyConfig,
     toy_model: ReluOutputModel,
     toy_sae_config: LanguageModelSAERunnerConfig,
 ):

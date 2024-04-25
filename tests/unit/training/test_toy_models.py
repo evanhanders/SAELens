@@ -1,11 +1,11 @@
 import pytest
 import torch
 
-from sae_lens.training.toy_models import Config, ReluOutputModel, ReluOutputModelCE
+from sae_lens.training.toy_models import ReluOutputModel, ReluOutputModelCE, ToyConfig
 
 
 def test_toy_sparsity_limits():
-    cfg = Config(n_instances=1, feature_probability=0.0)
+    cfg = ToyConfig(n_instances=1, feature_probability=0.0)
     model = ReluOutputModel(cfg)
     batch = model.generate_batch(10)
     assert (batch == 0).all()
@@ -18,7 +18,7 @@ def test_toy_sparsity_limits():
 
 @pytest.mark.parametrize("n_correlated_pairs", [1, 2, 3])
 def test_toy_correlated_features(n_correlated_pairs: int):
-    cfg = Config(
+    cfg = ToyConfig(
         n_instances=1,
         n_features=6,
         n_hidden=2,
@@ -34,7 +34,7 @@ def test_toy_correlated_features(n_correlated_pairs: int):
 
 @pytest.mark.parametrize("n_anticorrelated_pairs", [1, 2, 3])
 def test_toy_anticorrelated_features(n_anticorrelated_pairs: int):
-    cfg = Config(
+    cfg = ToyConfig(
         n_instances=1,
         n_features=6,
         n_hidden=2,
@@ -54,7 +54,7 @@ def test_toy_anticorrelated_features(n_anticorrelated_pairs: int):
 def test_toy_anti_and_corr_features(
     n_correlated_pairs: int, n_anticorrelated_pairs: int
 ):
-    cfg = Config(
+    cfg = ToyConfig(
         n_instances=1,
         n_features=12,
         n_hidden=2,
@@ -79,7 +79,7 @@ def test_toy_anti_and_corr_features(
 
 
 def test_reluoutput_forward():
-    cfg = Config(n_instances=1, n_features=6, n_hidden=2, feature_probability=0.5)
+    cfg = ToyConfig(n_instances=1, n_features=6, n_hidden=2, feature_probability=0.5)
     model = ReluOutputModel(cfg)
     with torch.inference_mode():
         model.W[0, 0, :] = torch.tensor([1, 0, 0, 0, 0, 0])
@@ -100,7 +100,7 @@ def test_reluoutput_forward():
 
 
 def test_reluoutputce_batch_shape():
-    cfg = Config(n_instances=1, n_features=5, n_hidden=2, feature_probability=0.5)
+    cfg = ToyConfig(n_instances=1, n_features=5, n_hidden=2, feature_probability=0.5)
     model = ReluOutputModelCE(cfg)
     batch = model.generate_batch(100)
     assert batch.shape == (100, cfg.n_instances, cfg.n_features + 1)

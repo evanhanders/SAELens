@@ -39,7 +39,7 @@ def cosine_decay_lr(step: int, steps: int):
 
 
 @dataclass
-class Config:
+class ToyConfig:
     # We optimize n_instances models in a single training loop to let us sweep over
     # sparsity or importance curves  efficiently. You should treat `n_instances` as
     # kinda like a batch dimension, but one which is built into our training setup.
@@ -57,7 +57,7 @@ class HookedToyModel(HookedRootModule, ABC):
 
     def __init__(
         self,
-        cfg: Config,
+        cfg: ToyConfig,
     ):
         super().__init__()
         self.cfg = cfg
@@ -241,7 +241,7 @@ class ReluOutputModel(HookedToyModel):
     b_final: Float[Tensor, "n_instances n_features"]
     # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
 
-    def __init__(self, cfg: Config):
+    def __init__(self, cfg: ToyConfig):
         super().__init__(cfg)
 
         self.W = nn.Parameter(
@@ -315,7 +315,7 @@ class ReluOutputModelCE(ReluOutputModel):
     b_final: Float[Tensor, "n_instances n_features"]
     # Our linear map is x -> ReLU(W.T @ W @ x + b_final)
 
-    def __init__(self, cfg: Config, extra_feature_value: float = 1e-6):
+    def __init__(self, cfg: ToyConfig, extra_feature_value: float = 1e-6):
         super().__init__(cfg)
         self.extra_feature_value = extra_feature_value
 

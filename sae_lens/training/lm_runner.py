@@ -7,7 +7,7 @@ from sae_lens.training.activations_store import ActivationsStore, ToyActivations
 from sae_lens.training.config import LanguageModelSAERunnerConfig
 from sae_lens.training.sae_group import SparseAutoencoderDictionary
 from sae_lens.training.session_loader import LMSparseAutoencoderSessionloader
-from sae_lens.training.toy_models import Config, ReluOutputModel
+from sae_lens.training.toy_models import ReluOutputModel, ToyConfig
 from sae_lens.training.train_sae_on_language_model import (
     train_sae_group_on_language_model,
 )
@@ -63,7 +63,7 @@ def language_model_sae_runner(cfg: LanguageModelSAERunnerConfig):
     return sae_runner(cfg, model, activations_loader, sparse_autoencoder)
 
 
-def toy_model_sae_runner(cfg: LanguageModelSAERunnerConfig, model_cfg: Config):
+def toy_model_sae_runner(cfg: LanguageModelSAERunnerConfig, model_cfg: ToyConfig):
     """ """
 
     # TODO: put model type into runner config
