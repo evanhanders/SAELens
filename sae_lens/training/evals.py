@@ -8,6 +8,7 @@ from transformer_lens.hook_points import HookedRootModule
 
 from sae_lens.training.activations_store import ActivationsStore
 from sae_lens.training.sparse_autoencoder import SparseAutoencoder
+from sae_lens.training.toy_models import HookedToyModel
 
 
 @torch.no_grad()
@@ -41,11 +42,12 @@ def run_evals(
     zero_abl_loss = losses_df["zero_abl_loss"].mean()
 
     # get cache
+    extra_kwargs: dict[str, Any] = sparse_autoencoder.cfg.model_kwargs.copy()
+    if not isinstance(model, HookedToyModel):
+        extra_kwargs["prepend_bos"] = False
+
     _, cache = model.run_with_cache(
-        eval_tokens,
-        prepend_bos=False,
-        names_filter=[hook_point_eval, hook_point],
-        **sparse_autoencoder.cfg.model_kwargs,
+        eval_tokens, names_filter=[hook_point_eval, hook_point], **extra_kwargs
     )
 
     has_head_dim_key_substrings = ["hook_q", "hook_k", "hook_v", "hook_z"]
@@ -73,10 +75,10 @@ def run_evals(
         f"metrics/l2_norm{suffix}": l2_norm_out.mean().item(),
         f"metrics/l2_ratio{suffix}": l2_norm_ratio.mean().item(),
         # CE Loss
-        f"metrics/CE_loss_score{suffix}": recons_score,
-        f"metrics/ce_loss_without_sae{suffix}": ntp_loss,
-        f"metrics/ce_loss_with_sae{suffix}": recons_loss,
-        f"metrics/ce_loss_with_ablation{suffix}": zero_abl_loss,
+        f"metrics/loss_score{suffix}": recons_score,
+        f"metrics/loss_without_sae{suffix}": ntp_loss,
+        f"metrics/loss_with_sae{suffix}": recons_loss,
+        f"metrics/loss_with_ablation{suffix}": zero_abl_loss,
     }
 
     if wandb.run is not None:
@@ -123,6 +125,8 @@ def get_recons_loss(
     batch_tokens: torch.Tensor,
 ):
     hook_point = sparse_autoencoder.cfg.hook_point
+    if isinstance(model, HookedToyModel):
+        batch_tokens = batch_tokens.unsqueeze(-2)  # add instance dimension.
     loss = model(
         batch_tokens, return_type="loss", **sparse_autoencoder.cfg.model_kwargs
     )

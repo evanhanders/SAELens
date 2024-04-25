@@ -19,6 +19,7 @@ from sae_lens.training.config import (
     CacheActivationsRunnerConfig,
     LanguageModelSAERunnerConfig,
 )
+from sae_lens.training.toy_models import HookedToyModel
 
 HfDataset = DatasetDict | Dataset | IterableDatasetDict | IterableDataset
 
@@ -157,11 +158,22 @@ class ActivationsStore(ABC):
         """
         layers = self.hook_point_layers
         act_names = [self.hook_point.format(layer=layer) for layer in layers]
+        if isinstance(self.model, HookedToyModel):
+            # add instance dimension
+            batch_tokens = batch_tokens.unsqueeze(0)
         layerwise_activations = self.model.run_with_cache(
             batch_tokens,
             names_filter=act_names,
         )[1]
-        activations_list = [layerwise_activations[act_name] for act_name in act_names]
+        if isinstance(self.model, HookedToyModel):
+            # remove instance dimension
+            activations_list = [
+                layerwise_activations[act_name].squeeze() for act_name in act_names
+            ]
+        else:
+            activations_list = [
+                layerwise_activations[act_name] for act_name in act_names
+            ]
         if self.hook_point_head_index is not None:
             activations_list = [
                 act[:, :, self.hook_point_head_index] for act in activations_list

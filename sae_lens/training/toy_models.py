@@ -85,7 +85,7 @@ class HookedToyModel(HookedRootModule, ABC):
         )
 
     @abstractmethod
-    def forward(self, features: Tensor) -> Tensor:
+    def forward(self, features: Tensor, return_type: str | None = None) -> Tensor:
         """Forward pass, to be implemented by subclasses"""
 
     @abstractmethod
@@ -258,7 +258,9 @@ class ReluOutputModel(HookedToyModel):
         self.setup()
 
     def forward(
-        self, features: Float[Tensor, "... instances features"]
+        self,
+        features: Float[Tensor, "... instances features"],
+        return_type: str | None = None,
     ) -> Float[Tensor, "... instances features"]:
         hidden = self.hook_hidden(
             einops.einsum(
@@ -274,7 +276,12 @@ class ReluOutputModel(HookedToyModel):
                 "... instances hidden, instances hidden features -> ... instances features",
             )
         )
-        return F.relu(out + self.b_final)
+        reconstructed = F.relu(out + self.b_final)
+
+        if return_type == "loss":
+            return self.calculate_loss(reconstructed, features)
+        else:
+            return reconstructed
 
     def calculate_loss(
         self,

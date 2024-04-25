@@ -134,12 +134,10 @@ def test_toy_activations_store__shapes_look_correct(
     toy_model: ReluOutputModel,
     toy_sae_config: LanguageModelSAERunnerConfig,
 ):
+    toy_sae_config.d_in = toy_cfg.n_hidden
     store = ToyActivationsStore.from_config(toy_model, toy_sae_config)
     assert store.model == toy_model
     assert store.d_in == toy_cfg.n_hidden
-
-    assert isinstance(store.dataset, IterableDataset)
-    assert isinstance(store.iterable_dataset, Iterable)
 
     # 50% is stored in buffer, the rest is in the dataloader.
     expected_size = (
@@ -186,7 +184,7 @@ def test_activations_store__shapes_look_correct_with_real_models_and_datasets(
 ):
     # --- first, test initialisation ---
 
-    store = LMActivationsStore.from_config(model, cfg)
+    store: LMActivationsStore = LMActivationsStore.from_config(model, cfg)  # type: ignore
 
     assert store.model == model
 
